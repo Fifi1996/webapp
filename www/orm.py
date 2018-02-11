@@ -12,12 +12,19 @@ def create_pool(loop,**kw): #创建连接池
         user=kw['user'],
         password=kw['password'],
         db=kw['db'],
-        charset=kw.get('charset','utf-8'),
+        charset=kw.get('charset','utf8'),
         autocommit=kw.get('autocommit',True),
         maxsize=kw.get('maxsize',10),
         minsize=kw.get('minsize',1),
         loop=loop
     )
+    #连接池要关闭
+async def destory_pool():
+    global __pool
+    if __pool is not None :
+        __pool.close()
+        await __pool.wait_closed()
+
 #执行select函数，需要传入sql语句和参数
 @asyncio.coroutine
 def select(sql,args,size=None):
@@ -39,11 +46,11 @@ def select(sql,args,size=None):
 @asyncio.coroutine
 def execute(sql,args):
     log(sql)
-    with (yield from _pool) as conn:
+    with (yield from __pool) as conn:
         try:
             cur=yield from conn.cursor()
             yield from cur.execute(sql.replace('?','%s'),args)
-            affected=cur.rowcount()
+            affected=cur.rowcount
             yield from cur.close()
         except BaseException as e:
             raise
@@ -120,23 +127,13 @@ class ModelMetaclass(type):
         attrs['__delete__'] = 'delete from `%s` where `%s`=?' % (tableName, primaryKey)
         return type.__new__(cls, name, bases, attrs)
 
-
-#设计ORM需要从上层调用者角度来设计
-#先考虑如何定义一个user对象，然后把数据库表users和他关联起来
-# from orm import Model,StringField,IntegerField
-# class User(Model):
-#     __table__='users'
-#     id=IntegerField(primary_key=True)
-#     name=StringField()
-
-
 #定义所有ORM映射的基类Model:
 class Model(dict,metaclass=ModelMetaclass):
     def __init__(self,**kw):
         super(Model,self).__init__(**kw)
     def __getattr__(self, key):
         try:
-            return self[Key]
+            return self[key]
         except KeyError:
             raise AttributeError(r"'Mode' object has no attribute '%s'"%key)
     def __setattr__(self, key, value):
